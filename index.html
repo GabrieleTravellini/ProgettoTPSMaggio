@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battaglia Navale Avanzata</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div id="screen-login" class="screen active">
+        <h1>⚔️ Battaglia Navale</h1>
+        <input type="text" id="input-nome" placeholder="Nome Giocatore..." maxlength="15">
+        <button id="btn-unisciti">Entra in Battaglia</button>
+    </div>
+
+    <div id="screen-lobby" class="screen">
+        <h2>⏳ Sala d'Attesa</h2>
+        <ul id="lista-giocatori"></ul>
+        <button id="btn-pronto" disabled>Pronti a posizionare le navi!</button>
+    </div>
+
+    <div id="screen-posizionamento" class="screen">
+        <h2>🚢 Posiziona la tua Flotta</h2>
+        <div class="pos-layout">
+            <div class="navi-list" id="navi-da-posizionare">
+                <!-- Popolato da JS -->
+            </div>
+            <div class="box-griglia">
+                <div id="griglia-pos" class="griglia"></div>
+            </div>
+        </div>
+        <div class="pos-controls">
+            <button id="btn-ruota">Ruota (Orizzontale)</button>
+            <button id="btn-conferma-pos" disabled>Conferma Flotta</button>
+            <p id="pos-status" class="status-text"></p>
+        </div>
+    </div>
+
+    <div id="screen-gioco" class="screen">
+        <div id="info-gioco">
+            <h2 id="turno-attuale">Caricamento...</h2>
+            <button id="btn-ricomincia" class="hidden">🔄 Ricomincia Partita</button>
+        </div>
+        
+        <div class="container-griglie">
+            <div class="box-griglia">
+                <h3>🔵 La tua Flotta</h3>
+                <div id="griglia-personale" class="griglia"></div>
+            </div>
+            <div class="box-griglia">
+                <h3 id="titolo-nemico">🔴 Bersaglio: <span id="nome-nemico">-</span></h3>
+                <div id="griglia-nemica" class="griglia"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
