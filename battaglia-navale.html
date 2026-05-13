@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Naval Battle: Exodia & Reverse</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --accent-color: #3b82f6;
+            --accent-hover: #2563eb;
+            --danger-color: #ef4444;
+            --success-color: #22c55e;
+            --gold-color: #eab308;
+            --text-color: #f8fafc;
+            --border-radius: 8px;
+            --grid-cell-size: 30px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+
+        .turn-indicator {
+            font-size: 1.1rem;
+            background: var(--panel-bg);
+            padding: 8px 20px;
+            border-radius: 20px;
+            border: 1px solid var(--accent-color);
+            display: inline-block;
+        }
+
+        #current-turn-name {
+            font-weight: bold;
+            color: var(--gold-color);
+        }
+
+        .game-container {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+            width: 100%;
+            max-width: 1100px;
+        }
+
+        @media (max-width: 900px) {
+            .game-container { grid-template-columns: 1fr; }
+        }
+
+        .boards-area { display: flex; flex-direction: column; gap: 20px; }
+
+        .panel {
+            background: var(--panel-bg);
+            padding: 15px;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .target-selector { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .target-btn {
+            background: #334155;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .target-btn:hover { background: #475569; }
+        .target-btn.active { background: var(--accent-color); font-weight: bold; box-shadow: 0 0 8px var(--accent-color); }
+        .target-btn.dead { opacity: 0.5; cursor: not-allowed; text-decoration: line-through; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(10, var(--grid-cell-size));
+            grid-template-rows: repeat(10, var(--grid-cell-size));
+            gap: 2px;
+            background: #334155;
+            border: 2px solid #475569;
+            margin: 0 auto;
+        }
+
+        .cell {
+            background: #0f172a;
+            width: var(--grid-cell-size);
+            height: var(--grid-cell-size);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1rem;
+            user-select: none;
+        }
+
+        .cell:hover { background: #1e293b; }
+        .cell.miss { background: #334155; cursor: default; }
+        .cell.miss::after { content: '•'; color: #64748b; }
+        .cell.hit { background: var(--danger-color); cursor: default; }
+        .cell.hit::after { content: '🔥'; font-size: 0.7rem; }
+        .cell.ship { background: #475569; border: 1px solid #64748b; }
+        .cell.exodia-found { background: var(--gold-color); animation: pulse 1s infinite; }
+        .cell.exodia-found::after { content: '📜'; }
+        .cell.reverse-found { background: #ec4899; }
+        .cell.reverse-found::after { content: '🔄'; }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(234, 179, 8, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
+        }
+
+        .status-area { display: flex; flex-direction: column; gap: 20px; }
+
+        .player-card {
+            background: #334155;
+            padding: 12px;
+            border-radius: var(--border-radius);
+            border-left: 4px solid transparent;
+            margin-bottom: 8px;
+        }
+
+        .player-card.active-turn { border-left-color: var(--gold-color); background: #4338ca; }
+        .player-card.eliminated { opacity: 0.5; filter: grayscale(1); }
+
+        .exodia-progress {
+            height: 6px;
+            background: #1e293b;
+            border-radius: 3px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .exodia-fill {
+            height: 100%;
+            background: var(--gold-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .buff-indicator {
+            display: inline-block;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-left: 5px;
+            background: #ec4899;
+            color: white;
+        }
+
+        .game-log {
+            height: 180px;
+            overflow-y: auto;
+            background: #0f172a;
+            border: 1px solid #334155;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #1e293b; padding-bottom: 2px; }
+        .log-entry.important { color: var(--gold-color); }
+        .log-entry.danger { color: var(--danger-color); }
+        .log-entry.success { color: var(--success-color); }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .modal {
+            background: var(--panel-bg);
+            padding: 30px;
+            border-radius: var(--border-radius);
+            text-align: center;
+            max-width: 450px;
+            border: 2px solid var(--accent-color);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+        }
+
+        .modal h2 { font-size: 1.8rem; margin-bottom: 15px; color: var(--text-color); }
+        .modal p { margin-bottom: 20px; line-height: 1.5; color: #cbd5e1; }
+
+        .btn {
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            font-size: 1rem;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn:hover { background: var(--accent-hover); }
+        .hidden { display: none !important; }
+        
+        input {
+            padding: 10px;
+            margin-bottom: 15px;
+            width: 80%;
+            font-size: 1rem;
+            background: #0f172a;
+            border: 1px solid #475569;
+            color: white;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Start Modal -->
+    <div id="start-modal" class="modal-overlay">
+        <div class="modal">
+            <h2>⚓ Naval Battle Royale</h2>
+            <p>
+                4-Player Battle. Destroy enemies, collect <strong>5 Exodia pieces</strong> to win instantly.<br>
+                Find <strong>Uno Reverse Cards</strong> to reflect damage back to the attacker.
+            </p>
+            <input type="text" id="player-name-input" placeholder="Captain Name" maxlength="10">
+            <br>
+            <button class="btn" onclick="startGame()">Start Battle</button>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="game-over-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <h2 id="winner-title">Game Over</h2>
+            <p id="winner-message">Result...</p>
+            <button class="btn" onclick="location.reload()">Replay</button>
+        </div>
+    </div>
+
+    <header>
+        <h1>Naval Battle</h1>
+        <div class="turn-indicator">
+            Turn: <span id="current-turn-name">Waiting...</span>
+        </div>
+    </header>
+
+    <main class="game-container">
+        <section class="boards-area">
+            <!-- Attack Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>Target: <span id="target-name-display">Select Target</span></h3>
+                    <div class="target-selector" id="target-selector-container"></div>
+                </div>
+                <div id="radar-grid" class="grid"></div>
+            </div>
+
+            <!-- Defense Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>Your Fleet</h3>
+                </div>
+                <div id="player-grid" class="grid" style="transform: scale(0.9); transform-origin: top left; width: fit-content;"></div>
+            </div>
+        </section>
+
+        <aside class="status-area">
+            <div class="panel">
+                <h3>Intelligence</h3>
+                <div id="players-list"></div>
+            </div>
+            <div class="panel">
+                <h3>Comms Log</h3>
+                <div id="game-log" class="game-log"></div>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        // --- Config ---
+        const BOARD_SIZE = 10;
+        const SHIPS = [5, 4, 3, 3, 2]; // Sizes
+        const TYPE = { EMPTY: 0, SHIP: 1, MISS: 2, HIT: 3, EXODIA: 4, REVERSE: 5 };
+        
+        let players = [];
+        let turnIndex = 0;
+        let targetIndex = -1;
+        let gameActive = false;
+        let turnDelay = 1000;
+
+        // --- Class Definition ---
+        class Player {
+            constructor(id, name, isBot) {
+                this.id = id;
+                this.name = name;
+                this.isBot = isBot;
+                this.grid = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(TYPE.EMPTY));
+                this.ships = [];
+                this.alive = true;
+                this.exodia = 0;
+                this.reverse = false;
+                this.possibleTargets = []; // For AI memory
+            }
+
+            init() {
+                // Place Ships
+                SHIPS.forEach(size => {
+                    let placed = false;
+                    while (!placed) {
+                        const h = Math.random() > 0.5;
+                        const x = Math.floor(Math.random() * BOARD_SIZE);
+                        const y = Math.floor(Math.random() * BOARD_SIZE);
+                        if (this.canPlace(x, y, size, h)) {
+                            let cells = [];
+                            for (let i = 0; i < size; i++) {
+                                let cx = h ? x + i : x;
+                                let cy = h ? y : y + i;
+                                this.grid[cy][cx] = TYPE.SHIP;
+                                cells.push({x: cx, y: cy});
+                            }
+                            this.ships.push({ cells, sunk: false });
+                            placed = true;
+                        }
+                    }
+                });
+
+                // Place Powerups
+                // Exodia (5 pieces)
+                for(let i=0; i<5; i++) {
+                    this.placeItem(TYPE.EXODIA);
+                }
+                // Reverse (1 piece)
+                this.placeItem(TYPE.REVERSE);
+            }
+
+            placeItem(type) {
+                let placed = false;
+                while(!placed) {
+                    let x = Math.floor(Math.random() * BOARD_SIZE);
+                    let y = Math.floor(Math.random() * BOARD_SIZE);
+                    if(this.grid[y][x] === TYPE.EMPTY) {
+                        this.grid[y][x] = type;
+                        placed = true;
+                    }
+                }
+            }
+
+            canPlace(x, y, size, h) {
+                if (h && x + size > BOARD_SIZE) return false;
+                if (!h && y + size > BOARD_SIZE) return false;
+                for (let i = 0; i < size; i++) {
+                    let cx = h ? x + i : x;
+                    let cy = h ? y : y + i;
+                    if (this.grid[cy][cx] !== TYPE.EMPTY) return false;
+                }
+                return true;
+            }
+
+            checkLife() {
+                let activeShips = 0;
+                this.ships.forEach(s => {
+                    if (s.cells.every(c => this.grid[c.y][c.x] === TYPE.HIT)) {
+                        s.sunk = true;
+                    } else {
+                        activeShips++;
+                    }
+                });
+                this.alive = activeShips > 0;
+            }
+        }
+
+        // --- Core Functions ---
+
+        function startGame() {
+            const name = document.getElementById('player-name-input').value || "Player 1";
+            document.getElementById('start-modal').classList.add('hidden');
+
+            players.push(new Player(0, name, false));
+            players.push(new Player(1, "Bot Alpha", true));
+            players.push(new Player(2, "Bot Beta", true));
+            players.push(new Player(3, "Bot Gamma", true));
+
+            players.forEach(p => p.init());
+            
+            // Set initial target
+            targetIndex = 1;
+            
+            gameActive = true;
+            updateUI();
+            log("Battle started! Sink ships or collect Exodia.", "success");
+        }
+
+        function updateUI() {
+            renderPlayers();
+            renderTargetSelector();
+            renderGrids();
+            
+            const curr = players[turnIndex];
+            document.getElementById('current-turn-name').innerText = curr.name + (curr.isBot ? " (Thinking...)" : "");
+            
+            if (!gameActive) return;
+
+            if (curr.isBot) {
+                setTimeout(botTurn, turnDelay);
+            }
+        }
+
+        function renderPlayers() {
+            const div = document.getElementById('players-list');
+            div.innerHTML = '';
+            players.forEach(p => {
+                const isMe = p.id === 0;
+                const card = document.createElement('div');
+                card.className = `player-card ${turnIndex === p.id ? 'active-turn' : ''} ${!p.alive ? 'eliminated' : ''}`;
+                
+                // Calc HP
+                const totalShipCells = 17;
+                let hits = 0;
+                p.ships.forEach(s => s.cells.forEach(c => { if(p.grid[c.y][c.x] === TYPE.HIT) hits++; }));
+                const hp = p.alive ? Math.max(0, Math.floor(((totalShipCells - hits) / totalShipCells) * 100)) : 0;
+
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong>${p.name} ${isMe ? '(You)' : ''}</strong>
+                        ${p.reverse ? '<span class="buff-indicator">🔄 REVERSE</span>' : ''}
+                    </div>
+                    <div style="font-size:0.8rem; color:#94a3b8; margin-top:4px;">HP: ${hp}%</div>
+                    <div class="exodia-progress" title="Exodia Pieces">
+                        <div class="exodia-fill" style="width: ${(p.exodia / 5) * 100}%"></div>
+                    </div>
+                    <div style="font-size:0.7rem; color:var(--gold-color); margin-top:2px;">Exodia: ${p.exodia}/5</div>
+                `;
+                div.appendChild(card);
+            });
+        }
+
+        function renderTargetSelector() {
+            const div = document.getElementById('target-selector-container');
+            div.innerHTML = '';
+            players.forEach((p, i) => {
+                if (i === 0) return; // Self
+                const btn = document.createElement('button');
+                btn.className = `target-btn ${targetIndex === i ? 'active' : ''} ${!p.alive ? 'dead' : ''}`;
+                btn.innerText = p.name;
+                btn.onclick = () => { targetIndex = i; renderTargetSelector(); renderRadarGrid(); };
+                div.appendChild(btn);
+            });
+            
+            const t = players[targetIndex];
+            if(t) document.getElementById('target-name-display').innerText = t.name;
+        }
+
+        function renderGrids() {
+            renderPlayerGrid();
+            renderRadarGrid();
+        }
+
+        function renderPlayerGrid() {
+            const gridEl = document.getElementById('player-grid');
+            gridEl.innerHTML = '';
+            const p = players[0];
+            
+            for(let y=0; y<BOARD_SIZE; y++) {
+                for(let x=0; x<BOARD_SIZE; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    const val = p.grid[y][x];
+                    if (val === TYPE.SHIP) cell.classList.add('ship');
+                    else if (val === TYPE.HIT) cell.classList.add('hit');
+                    else if (val === TYPE.MISS) cell.classList.add('miss');
+                    else if (val === TYPE.EXODIA) { /* Hidden on self until found logic is complex, let's just show hit */ } 
+                    else if (val === TYPE.REVERSE) { /* Hidden */ }
+                    
+                    // Reveal powerups if hit on self
+                    if(val === TYPE.EXODIA) cell.classList.add('exodia-found');
+                    if(val === TYPE.REVERSE) cell.classList.add('reverse-found');
+
+                    gridEl.appendChild(cell);
+                }
+            }
+        }
+
+        function renderRadarGrid() {
+            const gridEl = document.getElementById('radar-grid');
+            gridEl.innerHTML = '';
+            const target = players[targetIndex];
+            const isMyTurn = turnIndex === 0;
+
+            for(let y=0; y<BOARD_SIZE; y++) {
+                for(let x=0; x<BOARD_SIZE; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    const val = target.grid[y][x];
+
+                    if (val === TYPE.HIT) cell.classList.add('hit');
+                    else if (val === TYPE.MISS) cell.classList.add('miss');
+                    else if (val === TYPE.EXODIA && isMyTurn) {
+                        // Cheat mode visual or discovered logic
+                        // In standard play, you only see it when you hit it
+                    }
+
+                    if (isMyTurn && val === TYPE.EMPTY) {
+                        cell.onclick = () => fire(x, y);
+                    }
+                    gridEl.appendChild(cell);
+                }
+            }
+        }
+
+        function fire(x, y) {
+            if (!gameActive) return;
+            const attacker = players[turnIndex];
+            const target = players[targetIndex];
+
+            if (!target.alive) return; // Should be handled by UI, but safe check
+
+            // Process Shot
+            const cellVal = target.grid[y][x];
+            if (cellVal === TYPE.HIT || cellVal === TYPE.MISS) return; // Already shot here
+
+            // Logic
+            let msg = "";
+            let logClass = "";
+            
+            if (cellVal === TYPE.SHIP) {
+                target.grid[y][x] = TYPE.HIT;
+                msg = `${attacker.name} hit ${target.name}!`;
+                logClass = "danger";
+                target.checkLife();
+            } else if (cellVal === TYPE.EXODIA) {
+                target.grid[y][x] = TYPE.HIT; // Visually marks as hit
+                attacker.exodia++;
+                msg = `${attacker.name} found an EXODIA Piece! (${attacker.exodia}/5)`;
+                logClass = "important";
+            } else if (cellVal === TYPE.REVERSE) {
+                target.grid[y][x] = TYPE.HIT;
+                attacker.reverse = true;
+                msg = `${attacker.name} found a UNO REVERSE Card!`;
+                logClass = "important";
+            } else {
+                target.grid[y][x] = TYPE.MISS;
+                msg = `${attacker.name} missed ${target.name}.`;
+                logClass = "";
+            }
+
+            // Win Condition Check
+            if (attacker.exodia >= 5) {
+                endGame(attacker, "EXODIA SUMMONED! VICTORY!");
+                return;
+            }
+            
+            if (!target.alive) {
+                log(`${target.name} has been sunk!`, "danger");
+            }
+
+            log(msg, logClass);
+            updateUI();
+            
+            // Check Battle Royale Win (Last one standing)
+            const alive = players.filter(p => p.alive);
+            if (alive.length === 1) {
+                endGame(alive[0], "LAST CAPTAIN STANDING!");
+            } else if (alive.length === 0 && players.length > 1) {
+                // Rare draw
+                endGame(null, "MUTUAL DESTRUCTION");
+            } else {
+                nextTurn();
+            }
+        }
+
+        function nextTurn() {
+            // Cycle to next alive player
+            let loops = 0;
+            do {
+                turnIndex = (turnIndex + 1) % players.length;
+                loops++;
+            } while (!players[turnIndex].alive && loops < players.length * 2);
+
+            // If Human turn, ensure target is valid
+            if (turnIndex === 0) {
+                if (!players[targetIndex].alive) {
+                    // Find new target
+                    const nextTarget = players.find(p => p.id !== 0 && p.alive);
+                    if (nextTarget) targetIndex = nextTarget.id;
+                }
+            }
+            
+            updateUI();
+        }
+
+        // --- AI Logic ---
+
+        function botTurn() {
+            if (!gameActive) return;
+            const bot = players[turnIndex];
+            
+            // 1. Choose Target (Prioritize Humans or weaklings)
+            let aliveEnemies = players.filter(p => p.id !== bot.id && p.alive);
+            if (aliveEnemies.length === 0) return; // Should be game over
+
+            // Simple AI: 50% chance to target human if alive, else random
+            let target = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+            const human = players[0];
+            if (human.alive && Math.random() > 0.4) {
+                target = human;
+            }
+            
+            // 2. Fire
+            // Simple AI: Random valid shot (improvement: track hits)
+            let x, y;
+            let valid = false;
+            let attempts = 0;
+            
+            // Get list of empty cells
+            let emptyCells = [];
+            for(let r=0; r<BOARD_SIZE; r++) {
+                for(let c=0; c<BOARD_SIZE; c++) {
+                    if (target.grid[r][c] !== TYPE.HIT && target.grid[r][c] !== TYPE.MISS) {
+                        emptyCells.push({x: c, y: r});
+                    }
+                }
+            }
+
+            if (emptyCells.length > 0) {
+                const shot = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                
+                // We need to set global targetIndex to match logic for fire() function, 
+                // or refactor fire to accept target. Here we hijack the global targetIndex temporarily.
+                let originalTarget = targetIndex;
+                targetIndex = target.id; // Set logic target
+                
+                fire(shot.x, shot.y);
+                
+                // If game didn't end, restore visual target for human (not strictly needed but clean)
+                if (gameActive) targetIndex = originalTarget;
+            }
+        }
+
+        // --- Utility ---
+        function log(msg, type="") {
+            const el = document.getElementById('game-log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerText = `> ${msg}`;
+            el.appendChild(entry);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function endGame(winner, reason) {
+            gameActive = false;
+            const modal = document.getElementById('game-over-modal');
+            const title = document.getElementById('winner-title');
+            const msg = document.getElementById('winner-message');
+            
+            modal.classList.remove('hidden');
+            
+            if (winner) {
+                title.innerText = winner.id === 0 ? "VICTORY!" : "DEFEAT";
+                title.style.color = winner.id === 0 ? "var(--success-color)" : "var(--danger-color)";
+                msg.innerText = `${reason} Winner: ${winner.name}`;
+            } else {
+                title.innerText = "DRAW";
+                title.style.color = "white";
+                msg.innerText = reason;
+            }
+        }
+    </script>
+</body>
+</html>

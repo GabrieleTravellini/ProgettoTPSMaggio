@@ -38,19 +38,49 @@
     </div>
 
     <div id="screen-gioco" class="screen">
+        <!-- PLAYER SELECTOR MODAL (MULTIPLAYER) -->
+        <div id="modal-seleziona-bersaglio" class="modal hidden">
+            <div class="modal-content">
+                <h3>🎯 Scegli il tuo Bersaglio</h3>
+                <div id="lista-bersagli" class="player-selector"></div>
+                <button class="btn-close-modal">✕ Annulla</button>
+            </div>
+        </div>
+
         <div id="info-gioco">
-            <h2 id="turno-attuale">Caricamento...</h2>
+            <div class="header-game">
+                <div class="player-status">
+                    <h2 id="nome-giocatore-attuale">Tu: Attendendo...</h2>
+                    <p id="turno-attuale" class="turno-testo">Caricamento...</p>
+                </div>
+                <div class="turn-indicator">
+                    <div id="turno-arrows" class="arrows-container"></div>
+                </div>
+            </div>
             <button id="btn-ricomincia" class="hidden">🔄 Ricomincia Partita</button>
         </div>
-        
+
+        <!-- POWER-UPS SECTION -->
+        <div id="power-ups-section" class="power-ups-container hidden">
+            <h4>⚡ Power-ups Disponibili</h4>
+            <div id="power-ups-list" class="power-ups-list"></div>
+        </div>
+
+        <!-- SHIPS STATUS -->
+        <div class="ships-status-bar">
+            <div id="navi-rimaste" class="ships-display"></div>
+        </div>
+
         <div class="container-griglie">
-            <div class="box-griglia">
+            <div class="box-griglia my-fleet">
                 <h3>🔵 La tua Flotta</h3>
                 <div id="griglia-personale" class="griglia"></div>
+                <div id="flotta-status" class="fleet-status"></div>
             </div>
-            <div class="box-griglia">
+            <div class="box-griglia enemy-fleet">
                 <h3 id="titolo-nemico">🔴 Bersaglio: <span id="nome-nemico">-</span></h3>
                 <div id="griglia-nemica" class="griglia"></div>
+                <button id="btn-cambia-bersaglio" class="btn-change-target hidden">Cambia Bersaglio ↔️</button>
             </div>
         </div>
     </div>

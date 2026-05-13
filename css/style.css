@@ -34,19 +34,23 @@ button:hover:not(:disabled) { background-color: #c73e54; transform: translateY(-
     box-shadow: 0 4px 15px rgba(0,0,0,0.5);
 }
 .box-griglia { background: #16213e; padding: 15px; border-radius: 10px; }
+.my-fleet { border: 3px solid #4ecca3; }
+.enemy-fleet { border: 3px solid #e94560; }
 .container-griglie { display: flex; gap: 40px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
 
 .cella {
     width: 35px; height: 35px;
     background-color: #1a4b8c; /* Acqua */
     display: flex; align-items: center; justify-content: center;
-    font-size: 18px;
+    font-size: 14px;
     border-radius: 4px;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
+    border: 1px solid #0d2847;
 }
-.cella.nave { background-color: #533483; } /* Nave */
-.cella.colpito { background-color: #ff0000; } /* Colpito */
-.cella.mancato { background-color: #2a6fa8; color: #fff; } /* Mancato */
+.cella.nave { background-color: #533483; border: 2px solid #7d4fb8; } /* Nave */
+.cella.colpito { background-color: #ff0000; border: 2px solid #ff6666; box-shadow: inset 0 0 8px rgba(255,0,0,0.5); } /* Colpito */
+.cella.mancato { background-color: #2a6fa8; color: #9cc5ff; border: 2px solid #5a9fd4; } /* Mancato - azzurro */
+.cella.attaccato { background-color: #ff6b00; border: 2px solid #ffb366; } /* Attaccato - diverso da colpito */
 
 /* Preview Posizionamento */
 .cella.preview-valid { background-color: #4ecca3; opacity: 0.7; }
@@ -56,7 +60,8 @@ button:hover:not(:disabled) { background-color: #c73e54; transform: translateY(-
 .griglia.cliccabile .cella { cursor: crosshair; }
 .griglia.cliccabile .cella:hover { background-color: #4a8fe7; transform: scale(1.1); box-shadow: 0 0 10px #fff; }
 .griglia.cliccabile .cella.colpito:hover,
-.griglia.cliccabile .cella.mancato:hover { cursor: not-allowed; transform: none; box-shadow: none; background-color: inherit; }
+.griglia.cliccabile .cella.mancato:hover,
+.griglia.cliccabile .cella.attaccato:hover { cursor: not-allowed; transform: none; box-shadow: none; background-color: inherit; }
 
 /* ANIMAZIONI FEEDBACK */
 @keyframes hitShake {
@@ -74,3 +79,276 @@ button:hover:not(:disabled) { background-color: #c73e54; transform: translateY(-
     0%, 100% { background-color: transparent; } 50% { background-color: rgba(255, 0, 0, 0.2); }
 }
 .flash-danno { animation: warningFlash 0.5s ease-out 3; border: 2px solid red; }
+
+/* MULTIPLAYER UI */
+.header-game {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 40px;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #1a3a52, #2d5a7b);
+    padding: 20px;
+    border-radius: 10px;
+    width: 100%;
+    max-width: 900px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+
+.player-status {
+    text-align: left;
+    flex: 1;
+}
+
+.player-status h2 {
+    margin: 0;
+    font-size: 24px;
+    color: #4ecca3;
+}
+
+.turno-testo {
+    margin: 10px 0 0 0;
+    font-size: 18px;
+    font-weight: bold;
+    color: #fff;
+}
+
+/* UNO-STYLE TURN ARROWS */
+.turn-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 300px;
+}
+
+.arrows-container {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    background: #0f3460;
+    padding: 15px;
+    border-radius: 8px;
+    border: 2px solid #4ecca3;
+}
+
+.arrow-player {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 12px;
+    background: #16213e;
+    border-radius: 6px;
+    border: 2px solid #555;
+    transition: all 0.3s;
+}
+
+.arrow-player.current {
+    background: #4ecca3;
+    border-color: #4ecca3;
+    color: #000;
+    font-weight: bold;
+    transform: scale(1.15);
+    box-shadow: 0 0 15px #4ecca3;
+}
+
+.arrow-player.eliminated {
+    opacity: 0.4;
+    border-color: #555;
+}
+
+.arrow-icon {
+    font-size: 24px;
+}
+
+.arrow-name {
+    font-size: 12px;
+    text-align: center;
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* PLAYER SELECTOR MODAL */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: #16213e;
+    padding: 30px;
+    border-radius: 15px;
+    border: 3px solid #4ecca3;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+}
+
+.modal-content h3 {
+    margin-top: 0;
+    color: #4ecca3;
+    font-size: 24px;
+}
+
+.player-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.btn-player-target {
+    padding: 15px;
+    background: #1a4b8c;
+    border: 2px solid #4ecca3;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+
+.btn-player-target:hover {
+    background: #4ecca3;
+    color: #000;
+    transform: scale(1.05);
+}
+
+.btn-close-modal {
+    width: 100%;
+    margin-top: 10px;
+}
+
+/* SHIPS STATUS */
+.ships-status-bar {
+    width: 100%;
+    max-width: 900px;
+    margin: 15px 0;
+    background: #0f3460;
+    padding: 15px;
+    border-radius: 8px;
+    border: 2px solid #e94560;
+}
+
+.ships-display {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.ship-info {
+    background: #16213e;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 4px solid #4ecca3;
+    font-size: 14px;
+}
+
+.ship-info.damaged {
+    border-left-color: #ff6b00;
+}
+
+.ship-info.sunk {
+    border-left-color: #ff0000;
+    opacity: 0.6;
+    text-decoration: line-through;
+}
+
+/* FLEET STATUS */
+.fleet-status {
+    margin-top: 10px;
+    padding: 10px;
+    background: #0f3460;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #4ecca3;
+}
+
+.fleet-status.critical {
+    background: #3a1515;
+    color: #ff6666;
+}
+
+/* POWER-UPS */
+.power-ups-container {
+    background: #1a3a2a;
+    border: 2px solid #ffd700;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    max-width: 900px;
+    width: 100%;
+}
+
+.power-ups-container h4 {
+    margin-top: 0;
+    color: #ffd700;
+}
+
+.power-ups-list {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.power-up-card {
+    background: linear-gradient(135deg, #2a5a3a, #1a3a2a);
+    border: 2px solid #ffd700;
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 100px;
+}
+
+.power-up-card:hover {
+    background: linear-gradient(135deg, #3a7a4a, #2a5a3a);
+    box-shadow: 0 0 15px #ffd700;
+    transform: scale(1.05);
+}
+
+.power-up-icon {
+    font-size: 24px;
+    margin-bottom: 5px;
+}
+
+.power-up-name {
+    font-size: 12px;
+    color: #ffd700;
+    font-weight: bold;
+}
+
+.power-up-card.used {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: #666;
+}
+
+/* CHANGE TARGET BUTTON */
+.btn-change-target {
+    width: 100%;
+    margin-top: 10px;
+    background: #e94560;
+    border: 2px solid #ff6b8a;
+}
+
+.btn-change-target:hover:not(:disabled) {
+    background: #ff6b8a;
+}

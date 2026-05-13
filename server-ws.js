@@ -1,6 +1,6 @@
 const WebSocket = require("ws");
 const PORT = 41000;
-const DIM = 10; // Griglia 10x10
+const DIM = 10;
 const MIN_GIOCATORI = 2;
 
 const NAVI_CONFIG = [
@@ -10,6 +10,14 @@ const NAVI_CONFIG = [
   { nome: "Cacciatorpediniere", lunghezza: 3 },
   { nome: "Sottomarino", lunghezza: 2 }
 ];
+
+const POWER_UPS = [
+  { id: "radar", nome: "Radar", emoji: "📡", effetto: "Rivela la posizione di una nave" },
+  { id: "double_hit", nome: "Doppio Colpo", emoji: "💥", effetto: "Attacca due volte" },
+  { id: "shield", nome: "Scudo", emoji: "🛡️", effetto: "Proteggi una nave dal prossimo attacco" },
+  { id: "scan", nome: "Scansione", emoji: "🔍", effetto: "Scansiona una riga/colonna" }
+];
+
 const TOTALE_CELLE = NAVI_CONFIG.reduce((s, n) => s + n.lunghezza, 0);
 
 let giocatori = new Map();
@@ -38,35 +46,134 @@ function validaPosizionamento(g, r0, c0, orizzontale, lunghezza) {
 }
 
 function invia(ws, msg) {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 function inviaATutti(msg) {
   for (const [, g] of giocatori) invia(g.ws, msg);
+}
+
+function getShipHealth(griglia) {
+  const ships = {};
+  NAVI_CONFIG.forEach(config => {
+    const celle = [];
+    for (let r = 0; r < DIM; r++) {
+      for (let c = 0; c < DIM; c++) {
+        if (griglia[r][c] === "N" || griglia[r][c] === "X") {
+          celle.push({ r, c, status: griglia[r][c] });
+        }
+      }
+    }
+    
+    const gruppi = [];
+    const visitati = new Set();
+    
+    for (const cella of celle) {
+      if (visitati.has(`${cella.r},${cella.c}`)) continue;
+      
+      const gruppo = [];
+      const stack = [cella];
+      
+      while (stack.length > 0) {
+        const curr = stack.pop();
+        const key = `${curr.r},${curr.c}`;
+        if (visitati.has(key)) continue;
+        visitati.add(key);
+        gruppo.push(curr);
+        
+        [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr, dc]) => {
+          const nr = curr.r + dr;
+          const nc = curr.c + dc;
+          if (nr >= 0 && nr < DIM && nc >= 0 && nc < DIM && !visitati.has(`${nr},${nc}`)) {
+            const next = celle.find(c => c.r === nr && c.c === nc);
+            if (next) stack.push(next);
+          }
+        });
+      }
+      
+      if (gruppo.length === config.lunghezza) {
+        const danno = gruppo.filter(c => c.status === "X").length;
+        ships[config.nome] = { totale: gruppo.length, danno, status: danno === 0 ? "Intatto" : danno === gruppo.length ? "Affondato" : "Danneggiato" };
+      }
+    }
+  });
+  
+  return ships;
 }
 
 function inizia() {
   stato = "IN_CORSO";
   ordine = [...giocatori.keys()];
   turnoIdx = 0;
+  
   console.log("\n=== PARTITA INIZIATA ===");
+  console.log(`Ordine turni: ${ordine.join(" → ")}\n`);
+  
   inviaATutti({ tipo: "INIZIO", ordine });
   notificaTurno();
 }
 
 function notificaTurno() {
-  while (giocatori.get(ordine[turnoIdx])?.eliminato)
-    turnoIdx = (turnoIdx + 1) % ordine.length;
+  while (turnoIdx < ordine.length && giocatori.get(ordine[turnoIdx])?.eliminato) {
+    turnoIdx++;
+  }
+
+  if (turnoIdx >= ordine.length) {
+    turnoIdx = 0;
+    while (turnoIdx < ordine.length && giocatori.get(ordine[turnoIdx])?.eliminato) {
+      turnoIdx++;
+    }
+  }
 
   const attuale = ordine[turnoIdx];
   const gAttuale = giocatori.get(attuale);
-  const avversari = {};
-  for (const [n, info] of giocatori) {
-    if (n !== attuale && !info.eliminato) avversari[n] = oscura(info.griglia);
+  
+  if (!gAttuale) {
+    turnoIdx = (turnoIdx + 1) % ordine.length;
+    notificaTurno();
+    return;
   }
 
-  invia(gAttuale.ws, { tipo: "IL_TUO_TURNO", avversari });
+  const avversari = {};
+  for (const [n, info] of giocatori) {
+    if (n !== attuale && !info.eliminato) {
+      avversari[n] = {
+        griglia: oscura(info.griglia),
+        navi: getShipHealth(info.griglia)
+      };
+    }
+  }
+
+  // Invia a chi tocca
+  invia(gAttuale.ws, {
+    tipo: "IL_TUO_TURNO",
+    avversari,
+    ordine,
+    turnoAttuale: attuale,
+    powerUps: POWER_UPS
+  });
+
+  // Invia agli altri attivi
   for (const [n, g] of giocatori) {
-    if (n !== attuale && !g.eliminato) invia(g.ws, { tipo: "ATTENDI", turno_di: attuale });
+    if (n !== attuale && !g.eliminato) {
+      invia(g.ws, {
+        tipo: "ATTENDI",
+        turno_di: attuale,
+        ordine,
+        turnoAttuale: attuale
+      });
+    }
+  }
+
+  // Invia agli eliminati
+  for (const [n, g] of giocatori) {
+    if (g.eliminato) {
+      invia(g.ws, {
+        tipo: "ATTENDI",
+        turno_di: attuale,
+        ordine,
+        turnoAttuale: attuale
+      });
+    }
   }
 }
 
@@ -96,28 +203,45 @@ function attacca(nomeAttaccante, dati) {
 
   // Invia risultati personalizzati: griglia piena al bersaglio, oscurata agli altri
   const baseMsg = {
-    tipo: "RISULTATO", attaccante: nomeAttaccante, bersaglio, riga, col, esito,
-    nave: naveAffondata, celleRimaste: TOTALE_CELLE - target.colpiSubiti
+    tipo: "RISULTATO",
+    attaccante: nomeAttaccante,
+    bersaglio,
+    riga,
+    col,
+    esito,
+    nave: naveAffondata,
+    celleRimaste: TOTALE_CELLE - target.colpiSubiti
   };
 
   for (const [nome, g] of giocatori) {
     if (nome === bersaglio) {
-      invia(g.ws, { ...baseMsg, grigliaAggiornata: target.griglia, sonoIoIlBersaglio: true });
+      invia(g.ws, {
+        ...baseMsg,
+        grigliaAggiornata: target.griglia,
+        sonoIoIlBersaglio: true,
+        navi: getShipHealth(target.griglia)
+      });
     } else {
-      invia(g.ws, { ...baseMsg, grigliaAggiornata: oscura(target.griglia), sonoIoIlBersaglio: false });
+      invia(g.ws, {
+        ...baseMsg,
+        grigliaAggiornata: oscura(target.griglia),
+        sonoIoIlBersaglio: false,
+        navi: getShipHealth(target.griglia)
+      });
     }
   }
 
   if (target.colpiSubiti >= TOTALE_CELLE) {
     target.eliminato = true;
+    const rimasti = ordine.filter(n => !giocatori.get(n).eliminato);
+    console.log(`⚰️ ${bersaglio} è stato eliminato! Rimasti: ${rimasti.length}`);
     inviaATutti({ tipo: "ELIMINATO", giocatore: bersaglio });
-  }
 
-  const attivi = ordine.filter(n => !giocatori.get(n).eliminato);
-  if (attivi.length === 1) {
-    stato = "TERMINATA";
-    inviaATutti({ tipo: "VITTORIA", vincitore: attivi[0] });
-    return;
+    if (rimasti.length === 1) {
+      stato = "TERMINATA";
+      inviaATutti({ tipo: "VITTORIA", vincitore: rimasti[0] });
+      return;
+    }
   }
   turnoIdx = (turnoIdx + 1) % ordine.length;
   notificaTurno();
@@ -152,8 +276,16 @@ wss.on("connection", function (ws) {
           return invia(ws, { tipo: "ERRORE", messaggio: "Non puoi entrare ora o nome già in uso." });
         }
         mioNome = nome;
-        giocatori.set(nome, { ws, griglia: creaGrigliaVuota(), colpiSubiti: 0, eliminato: false, flottaPronta: false });
+        giocatori.set(nome, {
+          ws,
+          griglia: creaGrigliaVuota(),
+          colpiSubiti: 0,
+          eliminato: false,
+          flottaPronta: false,
+          powerUps: []
+        });
         invia(ws, { tipo: "BENVENUTO", nome, dim: DIM });
+        console.log(`✅ ${nome} è entrato in gioco. Giocatori: ${giocatori.size}`);
         inviaATutti({ tipo: "GIOCATORI", lista: [...giocatori.keys()] });
         break;
       }
@@ -163,6 +295,7 @@ wss.on("connection", function (ws) {
         stato = "POSIZIONAMENTO";
         for (const [, g] of giocatori) g.flottaPronta = false;
         inviaATutti({ tipo: "INIZIA_POSIZIONAMENTO", navi: NAVI_CONFIG, dim: DIM });
+        console.log("🎮 POSIZIONAMENTO INIZIATO");
         break;
       }
 
@@ -186,11 +319,18 @@ wss.on("connection", function (ws) {
       case "CONFERMA_FLITTA": {
         if (stato !== "POSIZIONAMENTO") return;
         giocatori.get(mioNome).flottaPronta = true;
-        
+        console.log(`✅ ${mioNome} ha confermato la flotta`);
+
         let tuttiPronti = true;
-        for (const [, info] of giocatori) { if (!info.flottaPronta) { tuttiPronti = false; break; } }
-        
+        for (const [, info] of giocatori) {
+          if (!info.flottaPronta) {
+            tuttiPronti = false;
+            break;
+          }
+        }
+
         if (tuttiPronti) {
+          console.log("🚀 Tutti pronti! Inizio partita...");
           inizia();
         } else {
           invia(giocatori.get(mioNome).ws, { tipo: "ATTENDI_POS", messaggio: "Flotta pronta! Attendi gli altri..." });
@@ -198,7 +338,16 @@ wss.on("connection", function (ws) {
         break;
       }
 
-      case "ATTACCA": { attacca(mioNome, dati); break; }
+      case "ATTACCA": {
+        attacca(mioNome, dati);
+        break;
+      }
+
+      case "USA_POWER_UP": {
+        const { powerUpId, bersaglio } = dati;
+        console.log(`⚡ ${mioNome} usa ${powerUpId} su ${bersaglio}`);
+        break;
+      }
 
       case "RICOMINCIA": {
         if (stato !== "TERMINATA" || giocatori.size < MIN_GIOCATORI) return;
@@ -207,8 +356,11 @@ wss.on("connection", function (ws) {
           g.colpiSubiti = 0;
           g.eliminato = false;
           g.flottaPronta = false;
+          g.powerUps = [];
         }
         stato = "POSIZIONAMENTO";
+        turnoIdx = 0;
+        console.log("🔄 PARTITA RICOMINCIATA");
         inviaATutti({ tipo: "INIZIA_POSIZIONAMENTO", navi: NAVI_CONFIG, dim: DIM });
         break;
       }
@@ -217,18 +369,17 @@ wss.on("connection", function (ws) {
 
   ws.on("close", function () {
     if (mioNome && giocatori.has(mioNome)) {
+      console.log(`❌ ${mioNome} si è disconnesso`);
       giocatori.delete(mioNome);
-      if (stato === "ATTESA" || stato === "POSIZIONAMENTO") {
-        if (giocatori.size < MIN_GIOCATORI) {
-          stato = "ATTESA";
-          inviaATutti({ tipo: "TORNA_LOBBY", lista: [...giocatori.keys()] });
-        }
+      if ((stato === "ATTESA" || stato === "POSIZIONAMENTO") && giocatori.size < MIN_GIOCATORI) {
+        stato = "ATTESA";
+        inviaATutti({ tipo: "TORNA_LOBBY", lista: [...giocatori.keys()] });
       }
     }
   });
 });
 
-console.log("╔══════════════════════════════════════╗");
-console.log("║  BATTAGLIA NAVALE 10x10 - SERVER WS  ║");
-console.log(`║  In ascolto su porta ${PORT}            ║`);
-console.log("╚══════════════════════════════════════╝\n");
+console.log("╔════════════════════════════════════════════╗");
+console.log("║  BATTAGLIA NAVALE MOLTIGIOCATORE - SERVER  ║");
+console.log(`║  In ascolto su porta ${PORT}                  ║`);
+console.log("╚════════════════════════════════════════════╝\n");
