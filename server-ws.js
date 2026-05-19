@@ -770,6 +770,13 @@ function processaCartaGiocata(nomeGiocatore, dati) {
   });
 
   console.log(`✅ Carta giocata: ${nomeGiocatore} -> ${card.name} su ${bersaglio}`);
+
+  // Se la carta era di tipo ATTACK, avanza il turno (come fa attacca() normale)
+  if (card.type === 'ATTACK' && stato !== 'TERMINATA') {
+    turnoIdx = (turnoIdx + 1) % ordine.length;
+    notificaTurno();
+    console.log(`🔄 Turno avanzato dopo carta ATTACK di ${nomeGiocatore}`);
+  }
 }
 
 wss.on("connection", function (ws) {
