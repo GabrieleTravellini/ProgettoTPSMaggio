@@ -8,6 +8,14 @@ let ordineGiocatori = [];
 let turnoAttualeIdx = 0;
 let giocatoriEliminati = new Set();
 
+// Card System Variables
+let miaHand = null;
+let miaExodiaChecker = null;
+let mazzoSize = 0;
+let scartiSize = 0;
+let powerUpUsage = { used: 0, max: 2, remaining: 2 };
+let exodiaProgress = { current: 0, total: 5, percentage: 0 };
+
 // DOM Elements
 const screens = {
   login: document.getElementById('screen-login'),
@@ -39,11 +47,31 @@ const flottaStatus = document.getElementById('flotta-status');
 const powerUpsList = document.getElementById('power-ups-list');
 const powerUpsSection = document.getElementById('power-ups-section');
 
+// Card UI Elements
+const deckCount = document.getElementById('deck-count');
+const discardCount = document.getElementById('discard-count');
+const exodiaProgress_ = document.getElementById('exodia-progress');
+const exodiaProgressFill = document.getElementById('exodia-progress-fill');
+const exodiaPartsCount = document.getElementById('exodia-parts-count');
+const powerUpsTracker = document.getElementById('power-ups-tracker');
+const powerUpsUsed = document.getElementById('power-ups-used');
+const powerUpsMax = document.getElementById('power-ups-max');
+const handContainer = document.getElementById('hand-container');
+const handEmptyMessage = document.getElementById('hand-empty-message');
+const deckSection = document.getElementById('deck-section');
+const modalExodiaVictory = document.getElementById('modal-exodia-victory');
+const exodiaVictoryText = document.getElementById('exodia-victory-text');
+const exodiaPartsDisplay = document.getElementById('exodia-parts-display');
+
 // Positioning Variables
 let naviDaPosizionare = [];
 let naveSelezionataIdx = 0;
 let orientamento = 'H';
 let grigliaPosData = [];
+
+// Grid Data for rendering
+let grigliaDatiPersonale = null;
+let grigliaDatiNemica = null;
 
 // Ships tracking
 let shipData = {};
@@ -130,9 +158,16 @@ function gestisciMessaggio(msg) {
             break;
 
         case "IL_TUO_TURNO":
+            console.log('🟢 Ricevuto IL_TUO_TURNO');
             isMioTurno = true;
+            cardPlayLocked = false;  // Unlock card plays during our turn
+            cardPlayPending = false;  // Reset pending state
+            enableCardClicks();
+            console.log('✅ Card plays unlocked - Ready to play cards');
+            
             avversari = msg.avversari;
             turnoAttualeIdx = ordineGiocatori.indexOf(msg.turnoAttuale);
+            grigliaDatiPersonale = grigliaPosData;
             renderDynamicGrid(grigliaPersonale, grigliaPosData, false);
             aggiornaTurnoArrows();
             
@@ -144,17 +179,36 @@ function gestisciMessaggio(msg) {
                 bersaglioAttuale = avversariDisponibili[0];
                 nomeNemicoSpan.innerText = bersaglioAttuale;
                 btnCambiaBersaglio.classList.remove('hidden');
-                renderDynamicGrid(grigliaNemica, avversari[bersaglioAttuale].griglia, true, bersaglioAttuale);
+                grigliaDatiNemica = avversari[bersaglioAttuale].griglia;
+                renderDynamicGrid(grigliaNemica, grigliaDatiNemica, true, bersaglioAttuale);
                 renderShipStatus(avversari[bersaglioAttuale].navi, bersaglioAttuale);
             }
             
             if (msg.powerUps) {
                 renderPowerUps(msg.powerUps);
             }
+            
+            // Handle card system data
+            if (msg.hand) {
+                renderHand(msg.hand);
+                playDrawAnimation();
+            }
+            if (msg.deck || msg.discard) {
+                aggiornaMazzoEScari(msg.deck, msg.discard);
+            }
+            if (msg.exodia) {
+                aggiornaProgressoExodia(msg.exodia);
+            }
+            if (msg.powerUpUsage) {
+                aggiornaPowerUpTracker(msg.powerUpUsage);
+            }
             break;
 
         case "ATTENDI":
             isMioTurno = false;
+            cardPlayLocked = true;  // Lock card plays during opponent's turn
+            disableCardClicks();
+            
             ordineGiocatori = msg.ordine;
             turnoAttualeIdx = msg.ordine.indexOf(msg.turno_di);
             renderDynamicGrid(grigliaPersonale, grigliaPosData, false);
@@ -210,6 +264,89 @@ function gestisciMessaggio(msg) {
             turnoAttuale.style.color = msg.vincitore === mioNome ? "#ffd700" : "#e94560";
             break;
 
+        case "VITTORIA_EXODIA":
+            isMioTurno = false;
+            btnRicomincia.classList.remove('hidden');
+            showExodiaVictory(msg.vincitore);
+            turnoAttuale.innerText = msg.vincitore === mioNome 
+                ? "👑 HAI ASSEMBLATO EXODIA! VITTORIA ISTANTANEA! 👑" 
+                : `👑 ${msg.vincitore} HA ASSEMBLATO EXODIA!`;
+            turnoAttuale.style.color = "#ffd700";
+            break;
+
+        case "AGGIORNA_MANO":
+            // Update hand after card play
+            console.log('📨 Ricevuto AGGIORNA_MANO dal server');
+            cardPlayPending = false;  // Unlock card plays
+            console.log('🔓 cardPlayPending = false (AGGIORNA_MANO) - Card plays unlocked');
+            enableCardClicks();
+            
+            if (msg.hand) {
+                renderHand(msg.hand);
+            }
+            if (msg.deck) {
+                aggiornaMazzoEScari(msg.deck, null);
+            }
+            if (msg.discard) {
+                aggiornaMazzoEScari(null, msg.discard);
+            }
+            if (msg.powerUpUsage) {
+                aggiornaPowerUpTracker(msg.powerUpUsage);
+            }
+            console.log("✅ Hand updated after card play");
+            break;
+
+        case "MESSAGGIO":
+            // Broadcast card play message to all players
+            if (msg.carta) {
+                turnoAttuale.innerText = msg.messaggio;
+                turnoAttuale.style.color = "#4DD0E1";
+                console.log(`🎴 ${msg.messaggio}`);
+            }
+            break;
+
+        case "CARTA_GIOCATA":
+            // Another player played a card (for future expanded effects)
+            console.log(`${msg.giocatore} played ${msg.carta}`);
+            break;
+
+        case "RADAR_RESULT":
+            // Show revealed 3x3 area from radar card
+            console.log("📡 RADAR_RESULT ricevuto:", msg);
+            if (msg.revealed) {
+                mostraRiposta("📡 RADAR SCAN RESULT", msg.messaggio, msg.revealed);
+            }
+            break;
+
+        case "SONAR_RESULT":
+            // Show revealed ships from sonar card
+            if (msg.ships) {
+                mostraSonarResult(msg.ships, msg.messaggio);
+            }
+            break;
+
+        case "RISULTATO":
+            // Handle attack results (from both regular attacks and card attacks)
+            if (msg.grigliaAggiornata) {
+                if (msg.sonoIoIlBersaglio) {
+                    grigliaDatiPersonale = msg.grigliaAggiornata;
+                    renderDynamicGrid(grigliaPersonale, grigliaDatiPersonale, false);
+                } else {
+                    grigliaDatiNemica = msg.grigliaAggiornata;
+                    renderDynamicGrid(grigliaNemica, grigliaDatiNemica, isMioTurno, bersaglioAttuale);
+                }
+                
+                // Show cell attack results with animations
+                if (msg.cellsAttacked && msg.cellsAttacked.length > 0) {
+                    mostraRisultatiAttacco(msg.cellsAttacked, msg.sonoIoIlBersaglio ? grigliaPersonale : grigliaNemica);
+                }
+                
+                // Update message
+                turnoAttuale.innerText = msg.messaggio || `Attacco: ${msg.esito}`;
+                console.log(`🎯 ${msg.messaggio}`);
+            }
+            break;
+
         case "ERRORE": 
             alert("❌ Errore: " + msg.messaggio); 
             break;
@@ -233,7 +370,16 @@ function renderDynamicGrid(container, data, clickable, targetName = "") {
             if (clickable && val !== "X" && val !== "O") {
                 cella.style.cursor = "crosshair";
                 cella.onclick = () => {
+                    console.log(`🖱️ Click detected on cell [${r},${c}]`);
+                    
+                    // Check if card play is in progress or locked
+                    if (cardPlayPending || cardPlayLocked) {
+                        console.warn('⏸️ Card play in progress or locked, cannot attack');
+                        return;
+                    }
+                    
                     if (isMioTurno) {
+                        console.log(`⚔️ Attacking [${r},${c}] on ${targetName}`);
                         isMioTurno = false;
                         ws.send(JSON.stringify({
                             tipo: "ATTACCA",
@@ -400,7 +546,8 @@ function mostraModalBersaglio() {
         btn.onclick = () => {
             bersaglioAttuale = nome;
             nomeNemicoSpan.innerText = bersaglioAttuale;
-            renderDynamicGrid(grigliaNemica, avversari[bersaglioAttuale].griglia, true, bersaglioAttuale);
+            grigliaDatiNemica = avversari[bersaglioAttuale].griglia;
+            renderDynamicGrid(grigliaNemica, grigliaDatiNemica, true, bersaglioAttuale);
             renderShipStatus(avversari[bersaglioAttuale].navi, bersaglioAttuale);
             modalBersaglio.classList.add('hidden');
         };
@@ -436,6 +583,182 @@ function renderPowerUps(powerUps) {
             }));
         };
         powerUpsList.appendChild(card);
+    });
+}
+
+// CARD EFFECT VISUALIZATION
+function mostraRiposta(titolo, messaggio, cellsRivelate) {
+    console.log(`📡 RADAR risultati:`, cellsRivelate);
+    
+    // Highlight cells on the actual enemy grid
+    evidenziaRivelate(cellsRivelate, 'radar-revealed');
+    
+    // Create a temporary modal to show revealed cells
+    const modal = document.createElement('div');
+    modal.className = 'modal card-effect-modal';
+    modal.id = 'radar-result-modal';
+    modal.style.display = 'flex';
+    
+    const contenuto = document.createElement('div');
+    contenuto.className = 'modal-content';
+    contenuto.style.position = 'relative';
+    contenuto.innerHTML = `
+        <h3 style="color: #00BCD4; font-weight: bold; margin-bottom: 15px;">📡 ${titolo}</h3>
+        <p style="margin: 10px 0; color: #ddd; font-size: 14px;">${messaggio}</p>
+        <div id="revealed-grid" class="effect-grid-preview"></div>
+        <button class="btn-primary" style="margin-top: 15px; width: 100%;">✓ Dismiss</button>
+    `;
+    
+    modal.appendChild(contenuto);
+    document.body.appendChild(modal);
+    
+    // Handle close button
+    const closeBtn = contenuto.querySelector('button');
+    closeBtn.onclick = () => {
+        // Remove highlighting when modal closes
+        grigliaNemica.querySelectorAll('.radar-revealed').forEach(el => el.classList.remove('radar-revealed'));
+        modal.remove();
+    };
+
+    // Draw revealed cells in a mini grid
+    const revealedGrid = modal.querySelector('#revealed-grid');
+    const minR = Math.min(...cellsRivelate.map(c => c.riga));
+    const minC = Math.min(...cellsRivelate.map(c => c.col));
+    const maxR = Math.max(...cellsRivelate.map(c => c.riga));
+    const maxC = Math.max(...cellsRivelate.map(c => c.col));
+    const gridSize = Math.max(maxR - minR + 1, maxC - minC + 1);
+    
+    revealedGrid.style.gridTemplateColumns = `repeat(${gridSize}, 1fr)`;
+    
+    for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell-preview';
+            const revealed = cellsRivelate.find(rv => rv.riga === r && rv.col === c);
+            
+            if (revealed) {
+                cell.style.border = '2px solid';
+                if (revealed.hasShip) {
+                    cell.innerHTML = '🚢';
+                    cell.style.background = 'linear-gradient(135deg, #FF6B6B, #FF4444)';
+                    cell.style.borderColor = '#FF0000';
+                    cell.style.color = '#fff';
+                    cell.style.fontSize = '20px';
+                    cell.style.fontWeight = 'bold';
+                } else {
+                    cell.innerHTML = '~';
+                    cell.style.background = 'linear-gradient(135deg, #4DD0E1, #00BCD4)';
+                    cell.style.borderColor = '#4DD0E1';
+                    cell.style.color = '#fff';
+                }
+            } else {
+                cell.innerHTML = '?';
+                cell.style.background = '#333';
+                cell.style.borderColor = '#555';
+                cell.style.color = '#666';
+            }
+            
+            revealedGrid.appendChild(cell);
+        }
+    }
+
+    // Auto-dismiss after 10 seconds
+    setTimeout(() => {
+        if (modal.parentElement) {
+            grigliaNemica.querySelectorAll('.radar-revealed').forEach(el => el.classList.remove('radar-revealed'));
+            modal.remove();
+        }
+    }, 10000);
+}
+
+function mostraSonarResult(ships, messaggio) {
+    console.log(`🌊 SONAR risultati:`, ships);
+    
+    // Highlight all ship cells on the enemy grid
+    if (ships && ships.length > 0) {
+        ships.forEach((ship, idx) => {
+            if (ship && ship.length > 0) {
+                ship.forEach(segment => {
+                    if (segment.riga !== undefined && segment.col !== undefined) {
+                        const cellIdx = segment.riga * DIM + segment.col;
+                        const cellEl = grigliaNemica.children[cellIdx];
+                        if (cellEl) {
+                            cellEl.classList.add('sonar-revealed');
+                        }
+                    }
+                });
+            }
+        });
+    }
+    
+    // Show revealed ships
+    const modal = document.createElement('div');
+    modal.className = 'modal card-effect-modal';
+    let shipsHtml = '';
+    ships.forEach((ship, idx) => {
+        const shipLength = ship ? ship.length : 'Unknown';
+        shipsHtml += `<div class="ship-result">🚢 Ship ${idx + 1}: ${shipLength} segments</div>`;
+    });
+
+    const contenuto = document.createElement('div');
+    contenuto.className = 'modal-content';
+    contenuto.innerHTML = `
+        <h3 style="color: #4DD0E1; font-weight: bold; margin-bottom: 15px;">🌊 SONAR PULSE</h3>
+        <p style="margin: 10px 0; color: #ddd; font-size: 14px;">${messaggio}</p>
+        <div style="margin: 15px 0; display: flex; flex-direction: column; gap: 8px;">
+            ${shipsHtml}
+        </div>
+        <button class="btn-primary" style="margin-top: 15px; width: 100%;">✓ Dismiss</button>
+    `;
+    
+    modal.appendChild(contenuto);
+    document.body.appendChild(modal);
+    
+    // Handle close button
+    const closeBtn = contenuto.querySelector('button');
+    closeBtn.onclick = () => {
+        grigliaNemica.querySelectorAll('.sonar-revealed').forEach(el => el.classList.remove('sonar-revealed'));
+        modal.remove();
+    };
+
+    setTimeout(() => {
+        if (modal.parentElement) {
+            grigliaNemica.querySelectorAll('.sonar-revealed').forEach(el => el.classList.remove('sonar-revealed'));
+            modal.remove();
+        }
+    }, 10000);
+}
+
+function evidenziaRivelate(cellsRivelate, className) {
+    // Highlight revealed cells on the enemy grid
+    cellsRivelate.forEach(cell => {
+        const cellIdx = cell.riga * DIM + cell.col;
+        const cellEl = grigliaNemica.children[cellIdx];
+        if (cellEl) {
+            cellEl.classList.add(className);
+        }
+    });
+}
+
+function mostraRisultatiAttacco(cellsAttacked, gridElement) {
+    // Animate the attacked cells on the grid
+    cellsAttacked.forEach((cell, idx) => {
+        setTimeout(() => {
+            const cellIdx = cell.riga * DIM + cell.col;
+            const cellEl = gridElement.children[cellIdx];
+            if (cellEl) {
+                // Add animation class
+                if (cell.esito === 'COLPITO') {
+                    cellEl.classList.add('hit-animation');
+                    cellEl.classList.add('colpito');
+                } else if (cell.esito === 'MANCATO') {
+                    cellEl.classList.add('miss-animation');
+                    cellEl.classList.add('mancato');
+                } else if (cell.esito === 'BLOCCATO') {
+                    cellEl.classList.add('block-animation');
+                }
+            }
+        }, idx * 300);
     });
 }
 
